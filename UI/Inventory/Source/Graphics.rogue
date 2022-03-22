@@ -1,0 +1,16 @@
+uses Plasmacore
+
+class Graphics [singleton]
+  PROPERTIES
+    button_font : Font
+    list_font   : Font
+
+  METHODS
+    method init
+      button_font = Font( "Font-Arial-72.png" )
+      list_font   = Font( "Font-Arial-36.png" )
+
+    method resize
+      button_font.height = (Display.height / 10)
+      list_font.height   = (button_font.height / 2).floor
+endClass
