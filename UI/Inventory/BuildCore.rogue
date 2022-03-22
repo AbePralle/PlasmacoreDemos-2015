@@ -1,0 +1,872 @@
+# To run this build file, install Rogue from github.com/AbePralle/Rogue then cd
+# to this folder and type "rogo" at the command line.
+
+#$ DEPENDENCIES     = Libraries/Plasmacore/Libraries/Rogue/AssetCompiler/*.rogue
+#$ ROGUEC_ARGS      = --libraries=Libraries/Plasmacore/Libraries/Rogue
+
+#$ LIBRARIES(macOS) = brew
+
+#$ LINK             = true
+
+#$ LIBRARIES(macOS) = sox libpng libjpeg
+#$ LIBRARIES(macOS) = freetype(freetype2)
+#$ LIBRARIES(macOS) = zlib
+#$ LINK(macOS)      = -lbz2
+
+#$ LIBRARIES(Linux) = libsdl2-dev(sdl2) libsdl2-mixer-dev(SDL2_mixer)
+#$ LIBRARIES(Linux) = libfreetype6-dev(freetype2)
+#$ LIBRARIES(Linux) = libpng-dev libjpeg-dev
+#$ LIBRARIES(Linux) = zlib
+#$ LIBRARIES(Linux) = sox
+
+$define DEFAULT_PLASMACORE "https://github.com/AbePralle/Plasmacore-2015.git#master"
+
+$include "AssetCompiler" [optional]
+
+LocalSettings
+ProjectSettings
+
+augment Build
+  PROPERTIES
+    DEBUG_MODE        = false
+    ROGUE_STD_LIBS    = "Libraries/Rogue"
+    ROGUEC            = "roguec"
+
+    platform       : String
+    output_folder  : String
+
+  METHODS
+    method build
+      println "Build " + platform
+
+      which (platform)
+        case "Web"
+          println @|Ensure you have the latest emscripten installed and configured:
+                   |
+                   |  (Install emsdk && cd emsdk/)
+                   |  git pull   # or "./emsdk update" in some cases
+                   |  ./emsdk install  latest
+                   |  ./emsdk activate latest
+                   |  (Add emsdk paths to ~/.bash_profile)
+                   |
+      endWhich
+
+      output_folder = File.fix_slashes( "Build/$/Source" (platform) )
+      create_folder( output_folder )
+
+      launch_asset_compiler
+      if (not needs_compile) return
+
+      local targets = build_targets
+
+      local libs = "Libraries/Plasmacore/Libraries/Rogue"
+      local cmd = ''$ --target=$ --gc=manual Source/Main.rogue Plasmacore --libraries=$ --output=$/RogueProgram''...
+        (ROGUEC,targets,libs,output_folder)
+      if (Build.DEBUG_MODE) cmd += " --debug"
+      execute( cmd )
+
+  method build_targets->String
+    local targets = platform + ",Plasmacore,C++"
+    which (platform)
+      case "macOS", "iOS": targets += ",ObjC"
+      case "Linux":        targets += ",SDL"
+      case "Web":          targets += ",SDL,emscripten"
+    endWhich
+
+    which (platform)
+      case "iOS", "Android": targets += ",Mobile"
+      others:                targets += ",Desktop"
+    endWhich
+
+    return targets
+
+  method create_folder( folder:String )
+    if (File.exists(folder)) return
+    println "Creating folder " + folder
+    File.create_folder( folder )
+
+  method launch_asset_compiler
+    local m_launch_asset_compiler = <<Global>>.find_global_method( "launch_asset_compiler" )
+    if (m_launch_asset_compiler)
+      # This won't be available until depz has downloaded the Plasmacore repo.
+      # Which is always has by this point, but using introspection to get things
+      # to compile in the first place.
+      m_launch_asset_compiler( @[platform] )
+    else
+      throw Error( "Please re-run 'rogo $' for the Plasmacore library installation to take effect." (platform.to_lowercase) )
+    endIf
+
+  method needs_compile->Logical
+    if (""+DEBUG_MODE != LocalSettings//LAST_BUILT_IN_DEBUG_MODE)
+      LocalSettings//LAST_BUILT_IN_DEBUG_MODE = ""+DEBUG_MODE
+      return true
+    endIf
+
+    local extension = "cpp"
+    if (platform == "macOS" or platform == "iOS") extension = "mm"
+
+    local output_h   = "$/RogueProgram.h" (output_folder)
+    local output_cpp = "$/RogueProgram.$" (output_folder,extension)
+
+    if (not File.exists(output_h))   return true
+    if (not File.exists(output_cpp)) return true
+
+    local dependencies = String[]
+    dependencies.add( File.listing(ROGUE_STD_LIBS,"**",&absolute) )
+    if (ROGUE_STD_LIBS != "Libraries/Rogue")
+      dependencies.add( File.listing("Libraries/Rogue","**",&absolute) )
+    endIf
+    dependencies.add( File.listing("Libraries/Plasmacore/Libraries/Rogue","**",&absolute) )
+    dependencies.add( File.listing("Source", "**", &absolute) )
+    dependencies.add( "Build.rogue" )
+    dependencies.add( "BuildCore.rogue" )
+    dependencies.add( "BuildLocal.rogue" )
+
+    local timestamp = File.timestamp(output_h).or_smaller( File.timestamp(output_cpp) )
+    forEach (dependency in dependencies)
+      if (File.timestamp(dependency) > timestamp) return true
+    endForEach
+
+    return false
+endAugment
+
+routine rogo_default
+  if (not File.exists("Libraries/Plasmacore") or not File.exists("Platforms"))
+    rogo_update
+  else
+    rogo_help
+  endIf
+endRoutine
+
+routine rogo_clean
+  if (File.exists("Build"))
+    println "Deleting Build/"
+    File.delete("Build")
+  endIf
+endRoutine
+
+routine rogo_android
+  rogo_android_build
+  execute "cd Platforms/Android && rogo debug"
+endRoutine
+
+routine rogo_android_open
+  if (System.is_macos)
+    execute "open -a '/Applications/Android Studio.app' Platforms/Android"
+    return
+
+  elseIf (System.is_linux)
+    # Dunno how well this works. TODO: investigate further
+    local filepath = "/opt/android-studio/bin/studio.sh"
+    if (not File.exists(filepath))
+      filepath = "/usr/local/android-studio/bin/studio.sh"
+    endIf
+    if (File.exists(filepath))
+      execute "$ Platforms/Android" (filepath)
+      return
+    endIf
+
+  endIf
+
+  throw Error( "Unable to find Android Studio install. Launch manually and open 'Platforms/Android'." )
+endRoutine
+
+routine rogo_android_debug
+  Build.DEBUG_MODE = true
+  rogo_android
+endRoutine
+
+routine rogo_android_release
+  rogo_android_build
+  execute "cd Platforms/Android && rogo release"
+endRoutine
+
+routine rogo_android_build
+  Build.platform = "Android"
+  Build.build
+endRoutine
+
+routine rogo_android_build_debug
+  Build.DEBUG_MODE = true
+  rogo_android_build
+  execute "cd Platforms/Android && rogo build debug"
+endRoutine
+
+routine rogo_android_build_release
+  rogo_android_build
+  execute "cd Platforms/Android && rogo build release"
+endRoutine
+
+description( "android_icon", "Changes the icon used for by Android." )
+routine rogo_android_icon( new_icon_png:String )
+  execute ''cd Platforms/Android && rogo icon $'' (File.shell_escaped(new_icon_png))
+endRoutine
+
+description( "android_keystore", "Creates an Android release keystore." )
+routine rogo_android_keystore
+  execute "cd Platforms/Android && rogo keystore"
+endRoutine
+
+routine rogo_macos
+  Build.platform = "macOS"
+  Build.build
+endRoutine
+
+routine rogo_macos_debug
+  Build.DEBUG_MODE = true
+  rogo_macos
+endRoutine
+
+routine rogo_macos_open
+  open_xcode( "Platforms/macOS" )
+endRoutine
+
+routine rogo_ios
+  Build.platform = "iOS"
+  Build.build
+endRoutine
+
+routine rogo_ios_debug
+  Build.DEBUG_MODE = true
+  rogo_ios
+endRoutine
+
+routine rogo_ios_open
+  open_xcode( "Platforms/iOS" )
+endRoutine
+
+routine open_xcode( folder:String )
+  local listing = File.listing( folder, "*.xcworkspace" )
+  if (listing.is_empty) listing = File.listing( folder, "*.xcodeproj" )
+  if (listing.count)
+    execute ''open "$"'' (forEach in listing)
+  else
+    throw Error( "No .xcodeproj or .xcworkspace folders found." )
+  endIf
+endRoutine
+
+routine rogo_web( args=UndefinedValue:Value )
+  if (not args) args = @[]
+  if (not args.is_list) args = @[ args ]
+
+  local browser = "chrome"
+  forEach (arg in args)
+    if (arg == "debug") Build.DEBUG_MODE = true
+    else                browser = arg
+  endForEach
+
+  rogo_web_build
+  rogo_web_run( browser )
+endRoutine
+
+routine rogo_web_debug
+  Build.DEBUG_MODE = true
+  rogo_web
+endRoutine
+
+routine rogo_web_build
+  Build.platform = "Web"
+  Build.build
+  execute @|make -C Platforms/Web
+endRoutine
+
+routine rogo_web_build_debug
+  Build.DEBUG_MODE = true
+  rogo_web_build
+endRoutine
+
+routine rogo_web_run( browser:String )
+  if (browser == "")
+    browser = "chrome"
+    println @|Defaulting to 'chrome'. 'emrun --list_browsers' to see which browsers are available.
+  endIf
+  execute( "cd Build/Web && emrun --browser $ index.html" (browser) )
+endRoutine
+
+routine rogo_install_plasmacore( loc="":String )
+  if (not String.exists(loc))
+    println "Enter Git URL#branch - can specify URL only or #branch only."
+    println "[default: $] " (DEFAULT_PLASMACORE)
+    loc = Console.input( "> " )
+    if (loc == "")
+      loc = DEFAULT_PLASMACORE
+      println loc
+    elseIf (not loc.contains('#'))
+      loc += DEFAULT_PLASMACORE.from_first('#')
+    elseIf (loc.begins_with('#'))
+      loc = DEFAULT_PLASMACORE.before_first('#') + loc
+    endIf
+  endIf
+
+  # Clone repo
+  local url = loc.before_first( '#' )
+  local branch = loc.after_first( '#' )
+  execute "git clone $ --branch $ $" (url,branch,"Libraries/Plasmacore")
+endRoutine
+
+routine plasmacore_version->String
+  local version_filepath = "Libraries/Plasmacore/Libraries/Rogue/Plasmacore/PlasmacoreVersion.rogue"
+  require File.exists( version_filepath )
+
+  return File.load_as_string( version_filepath ).extract_string( ''*define PLASMACORE_VERSION "$"*'' )
+endRoutine
+
+routine error_exit( message:String )
+  local w = Console.width.clamped_high(80)
+  Console.error.println "=" * w
+  Console.error.println "ERROR"
+  Console.error.println( message.word_wrapped(w-2).indented(2) )
+  Console.error.println "=" * w
+  System.exit 1
+endRoutine
+
+routine rogo_update
+  if (not File.exists("Libraries/Plasmacore"))
+    println "=" * Console.width.clamped_high(80)
+    println "Plasmacore library does not exist at Libraries/Plasmacore"
+    println "=" * Console.width.clamped_high(80)
+    rogo_install_plasmacore
+
+  else
+    require File.exists( "Libraries/Plasmacore" )
+
+    if (not Process.run("cd Libraries/Plasmacore && git diff-index --quiet HEAD",&env).exit_code and
+        not Process.run("cd Libraries/Plasmacore && git rev-list @{u}..",&env).exit_code)
+      # Plasmacore folder is clean & up to date with remote. Pull any changes.
+      println "Pulling changes to Libraries/Plasmacore"
+      local cmd = "cd Libraries/Plasmacore && git pull"
+      println "> " + cmd
+      local result = Process.run( cmd, &env )
+      println result->String
+      if (result.exit_code)
+        error_exit "Unable to pull changes to Libraries/Plasmacore"
+      endIf
+    else
+      println "=" * Console.width.or_smaller(80)
+      println "WARNING"
+      local mesg = "Plasmacore repo has local changes. Aborting update."
+      mesg = mesg.word_wrapped((Console.width-2).or_smaller(78)).indented(2)
+      println mesg
+      println "=" * Console.width.or_smaller(80)
+      System.exit 1
+    endIf
+
+  endIf
+
+  local version_filepath = "Libraries/Rogue/Plasmacore/PlasmacoreVersion.rogue"
+  if (File.exists(version_filepath))
+    error_exit "The Plasmacore repo cannot update itself. Aborting."
+  endIf
+
+  local repo_v = plasmacore_version
+  local installed_v = ProjectSettings//PLASMACORE_VERSION
+  if (repo_v != installed_v)
+    ProjectSettings//PLASMACORE_VERSION = repo_v
+    if (String.exists(installed_v))
+      println "Updating Plasmacore library v$ -> v$" (installed_v,repo_v)
+    else
+      println "Configuring project with Plasmacore library v$" (repo_v)
+    endIf
+  endIf
+
+  # Copy over any new BuildCore.rogue and then relaunch to complete the update
+  sync( "BuildCore.rogue" )
+  execute "rogo install update"
+endRoutine
+
+routine rogo_install_update
+  # Copy over base project files but do not overwrite them if present.
+  local files = Files( "Libraries/Plasmacore/**" )
+  files.remove( "Build/**" )
+  files.remove( "Libraries/Framework/**" )
+  files.remove( "Libraries/Rogue/**" )
+  files.remove( "Assets/**" )
+  File.sync_from( files, ".", &keep_unused, &verbose, &missing_only )
+
+  sync( "*", &exclude=@["LICENSE","README.md","Local.settings","Build.rogue","BuildLocal.rogue"], &keep_unused )
+  sync( "Platforms/Android/plasmacore/src/main/java/org/plasmacore/*" )
+  sync( "Platforms/Android/plasmacore/src/main/cpp/*" )
+  sync( "Platforms/Android/Build.rogue" )
+  sync( "Platforms/Android/.gitignore", &missing_only )
+
+  update_gitignore
+
+  println "=" * Console.width.or_smaller(80)
+  println "Plasmacore library is up-to-date at v$" (plasmacore_version)
+  println "=" * Console.width.or_smaller(80)
+endRoutine
+
+routine sync( pattern:String, exclude=UndefinedValue:Value, &keep_unused, &missing_only )
+  local update_folder = "Libraries/Plasmacore"
+
+  local src_filepath = File.join( update_folder, pattern )
+  if (File.exists(src_filepath) and not File.is_folder(src_filepath))
+    # Handle a single specific file separately
+    local dest_filepath = pattern
+    if (File.is_different_than(src_filepath,dest_filepath))
+      println "Copying $ -> $" (src_filepath,dest_filepath)
+      File.copy( src_filepath, dest_filepath )
+    endIf
+    return
+  endIf
+
+  local source_folder = update_folder
+  local dest_folder = "."
+  if (pattern != "*")
+    dest_folder = pattern.before_last( '/' )
+    source_folder = File.join( source_folder, dest_folder )
+    pattern = pattern.after_last( '/' )
+  endIf
+
+  local files = Files( source_folder, pattern )
+  if (exclude.count)
+    files.remove( File.join(update_folder,(forEach in exclude)) )
+  endIf
+
+  File.sync_from( files, dest_folder, &=keep_unused, &verbose, &=missing_only )
+endRoutine
+
+routine execute( commands:String, &suppress_error )->Logical
+  forEach (cmd in LineReader(commands))
+    print( "> " ).println( cmd )
+    if (System.run(cmd) != 0)
+      if (suppress_error) return false
+      else                throw Error( "Build failed." )
+    endIf
+  endForEach
+  return true
+endRoutine
+
+class Settings
+  PROPERTIES
+    file   : File
+    values = @{}
+
+  METHODS
+    method init( filepath:String )
+      file = File( filepath )
+      if (file.exists)
+        forEach (line in LineReader(file))
+          line .= trimmed
+          if (line.begins_with('#')) nextIteration
+          local name = line.before_first( '=' )
+          local value = line.after_first( '=' )
+          if (name and value)
+            name  .= trimmed
+            value .= trimmed
+            if (value.begins_with('"') and value.ends_with('"')) value = value.leftmost(-1).rightmost(-1)
+            value .= replacing( "\\\"", "\"" )
+            values[ name ] = value
+          endIf
+        endForEach
+      endIf
+
+    method description->String
+      use builder = StringBuilder.pool
+        forEach (key in values.keys)
+          builder.print "$ = " (key)
+          local value = values[key]->String
+          value .= replacing( "\"", "\\\"" )
+          if (value.contains(' ')) builder.println ''\"$\"'' (value)
+          else                     builder.println value
+        endForEach
+        return builder->String
+      endUse
+
+    method get( name:String )->String
+      return values[ name ]
+
+    method set( name:String, value:String )
+      values[ name ] = value
+
+      # Save new settings with each change
+      file.save( description )
+endClass
+
+class LocalSettings : Settings [singleton]
+  METHODS
+    method init
+      prior.init( "Local.settings" )
+endClass
+
+class ProjectSettings : Settings [singleton]
+  METHODS
+    method init
+      prior.init( "Project.settings" )
+endClass
+
+
+routine update_gitignore
+  if (not File.exists(".gitignore"))
+    File.save( ".gitignore", default_gitignore )
+    return
+  endIf
+
+  local all_items = Set<<String>>()
+
+  local existing_entries = categorize_gitignore( File.load_as_string(".gitignore") )
+  forEach (list in existing_entries)
+    forEach (item in list)
+      all_items.add( item )
+    endForEach
+  endForEach
+
+  local is_modified = false
+  local plasmacore_entries = categorize_gitignore( default_gitignore )
+  local additions = StringBuilder()
+  forEach (key in plasmacore_entries.keys)
+    local list = plasmacore_entries[ key ]
+    forEach (item in list)
+      if (not all_items.contains(item))
+        all_items.add( item )
+        if (not existing_entries.contains(key)) existing_entries[key] = String[]
+        existing_entries[ key ].add( item )
+        if (key != "") additions.println( key )
+        additions.println item
+        is_modified = true
+      endIf
+    endForEach
+  endForEach
+
+  if (is_modified)
+    println "The following entries can be added to this project's .gitignore:\n"
+    local additional_entries = categorize_gitignore( additions )
+    forEach (key in additional_entries.keys)
+      if (key != "") println key
+      local list = additional_entries[ key ]
+      forEach (item in list)
+        println item
+      endForEach
+      println
+    endForEach
+
+    local response = Console.input( "Update existing .gitignore with the additional entries shown above (y/n)? " )
+    response .= to_lowercase
+    if (response == "y" or response == "yes")
+      use builder = StringBuilder.pool
+        forEach (key in existing_entries.keys)
+          if (key != "") builder.println key
+          builder.println (forEach in existing_entries[key])
+          builder.println
+        endForEach
+        println "Saving updated .gitignore"
+        File.save( ".gitignore", builder->String )
+      endUse
+    endIf
+  endIf
+
+endRoutine
+
+routine categorize_gitignore( gitignore:String )->StringTable<<String[]>>
+  local result = StringTable<<String[]>>()
+
+  local cur_category = ""
+  forEach (line in LineReader(gitignore))
+    line .= trimmed
+    if (line.trimmed.begins_with('#'))
+      cur_category = line
+      if (not result.contains(cur_category)) result[ cur_category ] = String[]
+    elseIf (line != "")
+      if (not result.contains(cur_category)) result[ cur_category ] = String[]
+      result[ cur_category ].add( line )
+    endIf
+  endForEach
+
+  return result
+endRoutine
+
+routine default_gitignore->String
+  return @|# Rogo Build
+          |/Build
+          |BuildLocal.rogue
+          |.rogo
+          |Local.settings
+          |
+          |# Plasmacore
+          |/Libraries/Plasmacore
+          |
+          |# Vim
+          |*.swp
+          |*.swo
+          |
+          |# Android
+          |**/src/main/assets
+          |
+          |# Mac
+          |.DS_Store
+          |
+          |# Xcode
+          |build/
+          |*.pbxuser
+          |!default.pbxuser
+          |*.mode1v3
+          |!default.mode1v3
+          |*.mode2v3
+          |!default.mode2v3
+          |*.perspectivev3
+          |!default.perspectivev3
+          |xcuserdata
+          |*.xccheckout
+          |*.moved-aside
+          |DerivedData
+          |*.hmap
+          |*.ipa
+          |*.xcuserstate
+endRoutine
+
+
+#-------------------------------------------------------------------------------
+# Introspection-based Launcher Framework
+#-------------------------------------------------------------------------------
+# Rogo is a "build your own build system" facilitator. At its core Rogo just
+# recompiles build files if needed and then runs the build executable while
+# forwarding any command line arguments. This file contains a default framework
+# which uses introspection to turn command line arguments into parameterized
+# routine calls.
+
+# Example: to handle the command "rogo abc xyz 5", define
+# "routine rogo_abc_xyz( n:Int32 )".
+
+# "rogo_default" will run in the absence of any other command line argument.
+
+# The following "comment directives" can be used in this file to control how
+# RogueC compiles it and to manage automatic dependency installation and
+# linking.
+
+# Each of the following should be on a line beginning with the characters #$
+# (preceding whitespace is fine). Sample args are given.
+
+#   ROGUEC       = roguec       # Path to roguec to compile this file with
+#   ROGUEC_ARGS  = --whatever   # Additional options to pass to RogueC
+#   CPP          = g++ -Wall -std=gnu++11 -fno-strict-aliasing
+#                  -Wno-invalid-offsetof   # C++ compiler path and/or invocation
+#   CPP_ARGS     = -a -b -c          # Additional C++ args
+#   LINK         = true              # Links following LIBRARIES with this Build
+#                                    # file (otherwise just installs them)
+#   LINK         = -lalpha -lbeta    # Links following LIBRARIES and includes
+#                                    # these additional flags
+#   LINK         = false             # Linking turned off for following
+#                                    # LIBRARIES - info can still be obtained
+#                                    # from $LIBRARY_FLAGS()
+#   LINK(macOS)  = ...               # Options applying only to
+#                                    # System.os=="macOS" (use with any OS and
+#                                    # any comment directive)
+#   LIBRARIES    = libalpha
+#   LIBRARIES    = libbeta(library-name)
+#   LIBRARIES    = libfreetype6-dev(freetype2)
+#   DEPENDENCIES = Library/Rogue/**/*.rogue
+#
+#   LIBRARIES    = name(package)
+#   LIBRARIES    = name(package:<package> install:<install-cmd>
+#                  link:<link-flags> which:<which-name>)
+#
+# The following macro is replaced within this file (Build.rogue) - the libraries
+# should normally also be declared in #$ LIBRARIES:
+#
+#   $LIBRARY_FLAGS(lib1,lib2)                              # sample macro
+#     ->
+#   -Ipath/to/lib1/include -Lpath/to/lib1/library -I ...   # sample replacement
+
+routine syntax( command:String, text:String )
+  Build.rogo_syntax[ command ] = text
+endRoutine
+
+routine description( command:String, text:String )
+  Build.rogo_descriptions[ command ] = text
+endRoutine
+
+routine help( command:String, description=null:String, syntax=null:String )
+  if (description) Global.description( command, description )
+  if (syntax)      Global.syntax( command, syntax )
+endRoutine
+
+try
+  Build.launch
+catch (err:Error)
+  Build.rogo_error = err
+  Build.on_error
+endTry
+
+class Build [singleton]
+  PROPERTIES
+    rogo_syntax         = StringTable<<String>>()
+    rogo_descriptions   = StringTable<<String>>()
+    rogo_prefix         = ?:{ $moduleName.count:$moduleName "::" || "" } + "rogo_" : String
+    rogo_command        = "default"
+    rogo_args           = @[]
+    rogo_error          : Error
+
+    LOCAL_SETTINGS_FILE = "Local.settings"
+
+  METHODS
+    method launch
+      rogo_args.add( forEach in System.command_line_arguments )
+      read_defs
+      on_launch
+      parse_args
+      dispatch_command
+
+    method dispatch_command
+      local m = find_command( rogo_command )
+      require m || "no such routine rogo_$()" (rogo_command)
+
+      local args = @[]
+      forEach (arg in rogo_args)
+        which (arg)
+          case "true":  args.add( true )
+          case "false": args.add( false )
+          case "null":  args.add( NullValue )
+          others:       args.add( arg )
+        endWhich
+      endForEach
+      if (m.parameter_count == 1 and args.count > 1) args = @[ args ] # Wrap args in a ValueList.
+      m( args )
+
+    method find_command( name:String )->MethodInfo
+      return <<Global>>.find_global_method( rogo_prefix + name )
+
+    method on_error
+      local w = Console.width.or_smaller( 80 )
+      Console.error.println "=" * w
+      Console.error.println rogo_error
+      Console.error.println "=" * w
+      on_exit
+      System.exit 1
+
+    method on_command_found
+      noAction
+
+    method on_command_not_found
+      local w = Console.width.or_smaller( 80 )
+      println "=" * w
+      println "ERROR: No such command '$'." (rogo_args.first)
+      println "=" * w
+      println
+      rogo_command = "help"
+      rogo_args.clear
+      on_command_found
+
+    method on_launch
+      noAction
+
+    method on_exit
+      noAction
+
+    method parse_args
+      block
+        if (rogo_args.count)
+          local parts = String[]
+          parts.add( forEach in rogo_args )
+          rogo_args.clear
+
+          while (parts.count)
+            local cmd = _join( parts )
+            if (find_command(cmd))
+              rogo_command = cmd
+              on_command_found
+              escapeBlock
+            endIf
+            rogo_args.insert( parts.remove_last )
+          endWhile
+
+          on_command_not_found
+        endIf
+
+        # Use default command
+        on_command_found
+      endBlock
+
+    method read_defs
+      read_defs( LOCAL_SETTINGS_FILE )
+
+    method read_defs( defs_filepath:String )
+      # Attempt to read defs from Local.settings
+      local overrides = String[]
+      if (File.exists(defs_filepath))
+        forEach (line in LineReader(File(defs_filepath)))
+          if (line.contains("="))
+            local name  = line.before_first('=').trimmed
+            local value = line.after_first('=').trimmed
+            if (value.begins_with('"') or value.begins_with('\''))
+              value = value.leftmost(-1).rightmost(-1)
+            endIf
+            local p = <<Build>>.find_property( name )
+            if (p)
+              overrides.add( "$ = $" (name,value) )
+              <<Build>>.set_property( this, p, Value(value) )
+            endIf
+          endIf
+        endForEach
+      endIf
+
+    method _join( value:Value )->String
+      local args = String[]
+      args.add( forEach in value )
+      return args.join( "_" )
+endClass
+
+
+routine rogo_help( command="":String )
+  command = Build._join( Build.rogo_args )
+  if (command.count)
+    local syntax = get_syntax( command )
+    local success = false
+    if (syntax)
+      println "SYNTAX"
+      println "  " + syntax
+      println
+      success = true
+    endIf
+    local description = get_description( command )
+    if (description)
+      println "DESCRIPTION"
+      forEach (line in LineReader(description.word_wrapped(76)))
+        print( "  " ).println( line )
+      endForEach
+      println
+      success = true
+    endIf
+    if (success)
+      return
+    else
+      local w = Console.width.or_smaller( 80 )
+      println "=" * w
+      println "ERROR: No such command '$'." (command)
+      println "=" * w
+      println
+    endIf
+  endIf
+
+  println "USAGE"
+  local lines = String[]
+  forEach (m in <<Global>>.global_methods)
+    if (m.name.begins_with(Build.rogo_prefix))
+      lines.add( "  " + get_syntax(m.name.after_first(Build.rogo_prefix)) )
+    endIf
+  endForEach
+  lines.sort( (a,b)=>(a<b) )
+  println (forEach in lines)
+  println
+endRoutine
+
+
+routine get_syntax( m_name:String )->String
+  if (Build.rogo_syntax.contains(m_name))
+    return "rogo " + Build.rogo_syntax[ m_name ]
+  else
+    local m = <<Global>>.find_global_method( Build.rogo_prefix + m_name )
+    if (not m) return null
+    local line = "rogo $" (m_name.replacing('_',' '))
+    line += " <$>" (m.parameter_name(forEach in 0..<m.parameter_count))
+    return line
+  endIf
+endRoutine
+
+
+routine get_description( m_name:String )->String
+  if (Build.rogo_descriptions.contains(m_name))
+    return Build.rogo_descriptions[ m_name ]
+  else
+    return null
+  endIf
+endRoutine
