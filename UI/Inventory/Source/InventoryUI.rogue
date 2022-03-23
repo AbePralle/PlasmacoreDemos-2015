@@ -15,14 +15,18 @@ class InventoryUI : PlasmacoreUI
       list.add( "Beta", 2 )
       list.add( "Gamma", 3 )
 
-      local bottom_panel = UIComponent()
+      local bottom_panel =
+        UIComponent() subclass
+          METHODS
+            method on_draw: display_bounds.fill( Color.BLACK )
+        endSubclass
 
       # Instead of making a custom class to allow the bottom panel to respond
       # to size changes, we'll make a resize handler callback.
       bottom_panel.on_resize( (panel)=>panel.fixed_height=Graphics.button_height*2 )
 
-      local increment = UIInventoryButton("+1")
-      local decrement = UIInventoryButton("-1")
+      local increment = UIInventoryButton( "+1", 1  )
+      local decrement = UIInventoryButton( "-1", -1 )
 
       # Adding components together with "+" creates a UIHorizontalLayout() and
       # adds each component to it.
@@ -40,8 +44,11 @@ class InventoryUI : PlasmacoreUI
 endClass
 
 class UIInventoryButton : UIWidget
+  PROPERTIES
+    delta : Int32
+
   METHODS
-    method init( label:String )
+    method init( label:String, delta )
       prior.init( label, Graphics.font )
 
     method on_draw
@@ -57,12 +64,15 @@ class UIInventoryButton : UIWidget
 
     method on_resize
       fixed_size = Graphics.button_size
+
+    method on_select
+      broadcast_message( @{id:"step",delta:delta} )
+
 endClass
 
 class UIInventoryScrollView : UIScrollView
-  # Normally you wouldn't need to extend UIScrollView but this overrides
-  # methods with a couple of bug fixes that will also be released in the next
-  # version of Rogue.
+  # Normally you wouldn't need this many overrides but two of the three methods
+  # are bugfixes that will also be released in the next version of Rogue.
   METHODS
     method on_select( e_press:PointerEvent, e_release:PointerEvent )
       local subcomponent = find( e_press.position )
@@ -88,6 +98,9 @@ class UIInventoryScrollView : UIScrollView
 
       endIf
 
+    method on_select_background( position:XY )
+      broadcast_message( @{id:"deselect_all"} )
+
     method set_content_offset( new_offset:XY )
       @content_offset = new_offset.floor
 endClass
@@ -103,25 +116,25 @@ endClass
 
 class UIInventoryItem : UIWidget
   PROPERTIES
-    item        : String
-    count       : Int32
-    count_label : UILabel
-    spacer      : UISpacer
-    is_selected : Logical
+    item           : String
+    quantity       : Int32
+    quantity_label : UILabel
+    spacer         : UISpacer
+    is_selected    : Logical
 
   METHODS
-    method init( item, count )
+    method init( item, quantity )
       local item_label = UILabel( item, Graphics.font )
 
       # .anchor controls the position of fixed-size components.
       # .alignment controls the position of text within components.
       item_label.alignment = Anchor.LEFT
 
-      count_label = UILabel( count->String, Graphics.font )
-      count_label.alignment = Anchor.RIGHT
+      quantity_label = UILabel( quantity->String, Graphics.font )
+      quantity_label.alignment = Anchor.RIGHT
 
       spacer = UISpacer.h(0)
-      add( count_label + spacer + item_label )
+      add( quantity_label + spacer + item_label )
 
     method on_draw
       if (is_selected)
@@ -132,13 +145,28 @@ class UIInventoryItem : UIWidget
       endIf
       prior.on_draw
 
+    method on_message( m:Value )
+      if (is_selected)
+        which (m//id->String)
+          case "deselect_all": is_selected = false
+          case "step":         quantity += m//delta->Int32
+        endWhich
+      endIf
+
     method on_resize
       fixed_height = (Graphics.font.height * 1.5).floor
-      count_label.fixed_width = Graphics.font.measure( "000" ).x
+      quantity_label.fixed_width = Graphics.font.measure( "000" ).x
       spacer.fixed_width = Graphics.font.measure("0").x
 
     method on_select
-      is_selected = not is_selected
+      if (is_selected) return
+      broadcast_message( @{id:"deselect_all"} )
+      is_selected = true
+
+    method set_quantity( new_value:Int32 )
+      if (@quantity == new_value) return
+      @quantity = new_value.clamped_low(0)
+      if (quantity_label) quantity_label.text = quantity->String
 
 endClass
 

@@ -15,7 +15,7 @@ class MainScreen : Screen [singleton]
       change_state( MainState() )
 
     method on_draw
-      Display.clear( Color.BLUE )
+      Display.clear( Color.WHITE )
 
     method on_resize
       Graphics.resize
