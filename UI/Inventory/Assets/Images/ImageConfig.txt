@@ -47,7 +47,6 @@
 @ **Font* varfont
 @ **font* varfont
 
-create image:Font-Arial-72.png font:Arial.ttf height:72 ascii
 create image:Font-Arial-36.png font:Arial.ttf height:36 ascii
 
 [Default]

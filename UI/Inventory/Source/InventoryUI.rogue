@@ -11,6 +11,9 @@ class InventoryUI : PlasmacoreUI
       # list; we'll set the bottom panel to a fixed_height and the
       # list will fill up the rest.
       local list = UIInventoryList()
+      list.add( "Alpha", 1 )
+      list.add( "Beta", 2 )
+      list.add( "Gamma", 3 )
 
       local bottom_panel = UIComponent()
 
@@ -18,8 +21,8 @@ class InventoryUI : PlasmacoreUI
       # to size changes, we'll make a resize handler callback.
       bottom_panel.on_resize( (panel)=>panel.fixed_height=Graphics.button_height*2 )
 
-      local increment = UIInventoryButton()
-      local decrement = UIInventoryButton()
+      local increment = UIInventoryButton("+1")
+      local decrement = UIInventoryButton("-1")
 
       # Adding components together with "+" creates a UIHorizontalLayout() and
       # adds each component to it.
@@ -27,7 +30,7 @@ class InventoryUI : PlasmacoreUI
 
       # Stacking components with "/" creates a UIVerticalLayout() and adds each
       # component to it.
-      add( list / bottom_panel )
+      add( UIScrollView(list) / bottom_panel )
 
     method draw
       # This patches a bug where a high-refresh monitor (75Hz) draws faster than
@@ -38,16 +41,42 @@ endClass
 
 class UIInventoryButton : UIWidget
   METHODS
+    method init( label:String )
+      prior.init( label, Graphics.font )
+
     method on_draw
-      display_bounds.fill( Color.RED )
+      if (is_pressed)
+        display_bounds.fill( Color.WHITE )
+        color = Color.BLACK  # font color
+        prior.on_draw        # let the text draw
+      else
+        color = Color.WHITE  # font color
+        prior.on_draw
+        display_bounds.draw( Color.WHITE, &thickness=Display.density*4 )
+      endIf
 
     method on_resize
       fixed_size = Graphics.button_size
 endClass
 
-class UIInventoryList : UIComponent
-  # Placeholder component that we'll flesh out to be a list.
+class UIInventoryList : UIList
   METHODS
-    method on_draw
-      display_bounds.fill( Color.GREEN )
+    method init
+      anchor = Anchor.TOP
+
+    method add( item:String, count:Int32 )
+      add( UIInventoryItem(item,count) )
 endClass
+
+class UIInventoryItem : UIComponent
+  PROPERTIES
+
+  METHODS
+    method init( item:String, count:Int32 )
+      local label = UILabel( "$ x$"(item,count), Graphics.font )
+      add( label )
+
+    method on_resize
+      fixed_height = (Graphics.font.height * 1.5).floor
+endClass
+

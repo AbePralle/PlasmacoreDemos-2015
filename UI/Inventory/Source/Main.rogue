@@ -24,12 +24,5 @@ endClass
 
 
 class MainState : ScreenState<<MainScreen>>
-  METHODS
-    method after_draw
-      Graphics.button_font.anchor = Anchor.CENTER
-      Graphics.button_font.draw( "Button Font", Display.at(0.5,0.25) )
-      Graphics.list_font.anchor = Anchor.CENTER
-      Graphics.list_font.draw( "Text Font", Display.at(0.5,0.75) )
-
 endClass
 
