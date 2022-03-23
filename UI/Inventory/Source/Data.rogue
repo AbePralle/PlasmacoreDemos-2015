@@ -1,0 +1,27 @@
+uses Plasmacore
+
+class Data [singleton]
+  PROPERTIES
+    data_folder : String
+    data        : Value
+    inventory   : Value
+
+  METHODS
+    method init
+      data_folder = Plasmacore.application_data_folder/"InventoryApp"
+      File.create_folder( data_folder )
+
+      local file = File( data_folder/"Data.json" ) # check for saved first
+      if (not file.exists) file = Plasmacore.data_file("Data.json") # new
+
+      data = JSON.load( file )
+      inventory = data//inventory
+
+      MessageManager[ "Application.on_save"  ] = ( (m) => Data.on_save )
+      # Sent by Plasmacore when the app is about to close.
+
+    method on_save
+      local file = File( data_folder/"Data.json" )
+      data.save( file )
+endClass
+

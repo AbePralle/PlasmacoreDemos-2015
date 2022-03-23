@@ -1,0 +1,29 @@
+{
+  "inventory":
+  {
+    "Alpha":{"quantity":0},
+    "Beta":{"quantity":0},
+    "Gamma":{"quantity":0},
+    "Delta":{"quantity":0},
+    "Epsilon":{"quantity":0},
+    "Zeta":{"quantity":0},
+    "Eta":{"quantity":0},
+    "Theta":{"quantity":0},
+    "Iota":{"quantity":0},
+    "Kappa":{"quantity":0},
+    "Lambda":{"quantity":0},
+    "Mu":{"quantity":0},
+    "Nu":{"quantity":0},
+    "Xi":{"quantity":0},
+    "Omicron":{"quantity":0},
+    "Pi":{"quantity":0},
+    "Rho":{"quantity":0},
+    "Sigma":{"quantity":0},
+    "Tau":{"quantity":0},
+    "Upsilon":{"quantity":0},
+    "Phi":{"quantity":0},
+    "Chi":{"quantity":0},
+    "Psi":{"quantity":0},
+    "Omega":{"quantity":0}
+  }
+}

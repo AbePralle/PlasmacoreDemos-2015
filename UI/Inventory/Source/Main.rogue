@@ -1,5 +1,6 @@
 uses Plasmacore
 
+$include "Data.rogue"
 $include "Graphics.rogue"
 $include "InventoryUI.rogue"
 
