@@ -10,7 +10,13 @@ class Graphics [singleton]
       button_font = Font( "Font-Arial-72.png" )
       list_font   = Font( "Font-Arial-36.png" )
 
+    method button_height->Int32
+      return (Display.width / 5)
+
+    method button_size->XY
+      return button_height * XY(2,1)
+
     method resize
-      button_font.height = (Display.height / 10)
-      list_font.height   = (button_font.height / 2).floor
+      button_font.height = button_height
+      list_font.height   = (button_height / 2)
 endClass

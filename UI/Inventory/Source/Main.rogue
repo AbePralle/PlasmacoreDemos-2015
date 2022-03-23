@@ -1,15 +1,21 @@
 uses Plasmacore
 
 $include "Graphics.rogue"
+$include "InventoryUI.rogue"
 
 Display( "Main" ).screen = MainScreen
 
 class MainScreen : Screen [singleton]
-  PROPERTIES
-
   METHODS
     method on_start
+      ui = InventoryUI()
+      # Screens and States have a built-in "ui" which is
+      # automatically updated and drawn.
+
       change_state( MainState() )
+
+    method on_draw
+      Display.clear( Color.BLUE )
 
     method on_resize
       Graphics.resize
@@ -19,8 +25,7 @@ endClass
 
 class MainState : ScreenState<<MainScreen>>
   METHODS
-    method on_draw
-      Display.clear( Color.BLUE )
+    method after_draw
       Graphics.button_font.anchor = Anchor.CENTER
       Graphics.button_font.draw( "Button Font", Display.at(0.5,0.25) )
       Graphics.list_font.anchor = Anchor.CENTER

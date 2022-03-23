@@ -1,0 +1,53 @@
+uses Plasmacore
+uses UI
+
+class InventoryUI : PlasmacoreUI
+  # A 'UI' is the manager of a tree of extended 'UIComponent' objects.
+  METHODS
+    method init
+      # Add components to the UI.
+      # Most library components are expand_to_fill by default (versus
+      # fixed_size or shrink_to_fit content). That's fine for the top
+      # list; we'll set the bottom panel to a fixed_height and the
+      # list will fill up the rest.
+      local list = UIInventoryList()
+
+      local bottom_panel = UIComponent()
+
+      # Instead of making a custom class to allow the bottom panel to respond
+      # to size changes, we'll make a resize handler callback.
+      bottom_panel.on_resize( (panel)=>panel.fixed_height=Graphics.button_height*2 )
+
+      local increment = UIInventoryButton()
+      local decrement = UIInventoryButton()
+
+      # Adding components together with "+" creates a UIHorizontalLayout() and
+      # adds each component to it.
+      bottom_panel.add( UIFiller.h + increment + UIFiller.h + decrement + UIFiller.h )
+
+      # Stacking components with "/" creates a UIVerticalLayout() and adds each
+      # component to it.
+      add( list / bottom_panel )
+
+    method draw
+      # This patches a bug where a high-refresh monitor (75Hz) draws faster than
+      # the update cycle (60Hz) which is usually responsible for calling request_redraw
+      prior.draw
+      request_redraw
+endClass
+
+class UIInventoryButton : UIWidget
+  METHODS
+    method on_draw
+      display_bounds.fill( Color.RED )
+
+    method on_resize
+      fixed_size = Graphics.button_size
+endClass
+
+class UIInventoryList : UIComponent
+  # Placeholder component that we'll flesh out to be a list.
+  METHODS
+    method on_draw
+      display_bounds.fill( Color.GREEN )
+endClass
