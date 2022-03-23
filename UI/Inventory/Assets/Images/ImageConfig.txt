@@ -47,7 +47,7 @@
 @ **Font* varfont
 @ **font* varfont
 
-create image:Font-Arial-36.png font:Arial.ttf height:36 ascii
+create image:Font-Arial-36.png font:Arial.ttf height:36 ascii monospace:numbers
 
 [Default]
 set image_sheet_size:4096

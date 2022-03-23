@@ -30,7 +30,7 @@ class InventoryUI : PlasmacoreUI
 
       # Stacking components with "/" creates a UIVerticalLayout() and adds each
       # component to it.
-      add( UIScrollView(list) / bottom_panel )
+      add( UIInventoryScrollView(list) / bottom_panel )
 
     method draw
       # This patches a bug where a high-refresh monitor (75Hz) draws faster than
@@ -59,6 +59,39 @@ class UIInventoryButton : UIWidget
       fixed_size = Graphics.button_size
 endClass
 
+class UIInventoryScrollView : UIScrollView
+  # Normally you wouldn't need to extend UIScrollView but this overrides
+  # methods with a couple of bug fixes that will also be released in the next
+  # version of Rogue.
+  METHODS
+    method on_select( e_press:PointerEvent, e_release:PointerEvent )
+      local subcomponent = find( e_press.position )
+      # Any subcomponents that could respond to this event?
+
+      if (first_child and subcomponent)
+        first_child.dispatch( e_press )
+        # This may capture pointer focus
+
+        if (UI.pointer_focus)
+          if (UI.pointer_focus.is_visible and UI.pointer_focus.is_input_enabled)
+            UI.pointer_focus.handle( e_release )
+          else
+            UI.pointer_focus.release_pointer_focus
+            first_child.dispatch( e_release )
+          endIf
+        else
+          first_child.dispatch( e_release )
+        endIf
+
+      else
+        on_select_background( e_press.position )
+
+      endIf
+
+    method set_content_offset( new_offset:XY )
+      @content_offset = new_offset.floor
+endClass
+
 class UIInventoryList : UIList
   METHODS
     method init
@@ -68,15 +101,44 @@ class UIInventoryList : UIList
       add( UIInventoryItem(item,count) )
 endClass
 
-class UIInventoryItem : UIComponent
+class UIInventoryItem : UIWidget
   PROPERTIES
+    item        : String
+    count       : Int32
+    count_label : UILabel
+    spacer      : UISpacer
+    is_selected : Logical
 
   METHODS
-    method init( item:String, count:Int32 )
-      local label = UILabel( "$ x$"(item,count), Graphics.font )
-      add( label )
+    method init( item, count )
+      local item_label = UILabel( item, Graphics.font )
+
+      # .anchor controls the position of fixed-size components.
+      # .alignment controls the position of text within components.
+      item_label.alignment = Anchor.LEFT
+
+      count_label = UILabel( count->String, Graphics.font )
+      count_label.alignment = Anchor.RIGHT
+
+      spacer = UISpacer.h(0)
+      add( count_label + spacer + item_label )
+
+    method on_draw
+      if (is_selected)
+        display_bounds.fill( Color.BLACK )
+        color = Color.WHITE
+      else
+        color = Color.BLACK
+      endIf
+      prior.on_draw
 
     method on_resize
       fixed_height = (Graphics.font.height * 1.5).floor
+      count_label.fixed_width = Graphics.font.measure( "000" ).x
+      spacer.fixed_width = Graphics.font.measure("0").x
+
+    method on_select
+      is_selected = not is_selected
+
 endClass
 
